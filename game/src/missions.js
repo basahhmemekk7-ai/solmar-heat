@@ -3,7 +3,7 @@
 // current objective; finishing a mission pays out and unlocks the next. After the
 // finale, timed delivery jobs keep the city paying.
 import * as THREE from '../vendor/three.module.min.js';
-import { PLACES, clamp } from './config.js';
+import { PLACES, ROAD_XS, ROAD_ZS, clamp } from './config.js';
 import { spawnCar, syncCarMesh, damageCar } from './vehicles.js';
 import { spawnPed } from './pedestrians.js';
 
@@ -190,9 +190,38 @@ export function createMissions(G) {
           // Flee: waypoint away from the player on the road grid.
           const dx = t.x - p.x, dz = t.z - p.z;
           if (Math.hypot(t.wpX - t.x, t.wpZ - t.z) < 12) {
-            const away = Math.atan2(dx, dz) + G.rng.range(-0.5, 0.5);
-            const np = G.city.nearestRoadPoint(t.x + Math.sin(away) * 80, t.z + Math.cos(away) * 80);
-            t.wpX = clamp(np.x, -255, 255); t.wpZ = clamp(np.z, -255, 255);
+            // Flee along the road grid, like traffic: stay on Rico's
+            // current road, heading away from the player. At the map edge
+            // turn onto the cross road at the next intersection; if
+            // already there, turn at once. The old code picked any road
+            // point 80m away and drove straight at it — through
+            // buildings — so the only way to follow was to cut across
+            // blocks too.
+            const here = G.city.nearestRoadPoint(t.x, t.z);
+            const onNS = here.axis === 'x';
+            const dir = onNS ? (dz >= 0 ? 1 : -1) : (dx >= 0 ? 1 : -1);
+            const at = onNS ? t.z : t.x;
+            let wx, wz;
+            if (Math.abs(at + dir * 80) <= 250) {
+              wx = onNS ? here.x : at + dir * 80;
+              wz = onNS ? at + dir * 80 : here.z;
+            } else {
+              // End of the road: the next intersection ahead.
+              const lines = onNS ? ROAD_ZS : ROAD_XS;
+              let next = dir > 0 ? 240 : -240;
+              for (const l of lines) {
+                if (dir > 0 && l > at && l < next) next = l;
+                if (dir < 0 && l < at && l > next) next = l;
+              }
+              wx = onNS ? here.x : next;
+              wz = onNS ? next : here.z;
+              if (Math.hypot(wx - t.x, wz - t.z) < 12) {
+                // Already at the intersection: turn onto the cross road.
+                if (onNS) wx = t.x + (dx >= 0 ? 80 : -80);
+                else wz = t.z + (dz >= 0 ? 80 : -80);
+              }
+            }
+            t.wpX = clamp(wx, -255, 255); t.wpZ = clamp(wz, -255, 255);
           }
           const want = Math.atan2(t.wpX - t.x, t.wpZ - t.z);
           let d = want - t.heading;
@@ -227,7 +256,12 @@ export function createMissions(G) {
           e.shootCd = G.rng.range(0.9, 1.8);
           G.audio.shot();
           G.effects.muzzle(G, e.x, e.z, p.x, p.z);
-          if (G.rng.chance(0.4)) p.hurt(8);
+          // Five Vipers at 8 damage and 40% hits dealt ~12 dps combined
+          // and killed the player before two of them went down. At 5
+          // damage and 30% hits the fight is still dangerous — standing
+          // in the open trading shots loses — but a player who aims and
+          // moves wins with health to spare.
+          if (G.rng.chance(0.3)) p.hurt(5);
         }
       }
 
