@@ -1,11 +1,18 @@
-// The story: six missions for Kai Marlow, each a list of steps (drive somewhere,
-// steal a car, ram a rival, survive the police, fight a gang). A beacon marks the
-// current objective; finishing a mission pays out and unlocks the next. After the
-// finale, timed delivery jobs keep the city paying.
+// The story: ten missions for Kai Marlow, each a list of steps (drive somewhere,
+// steal a car, ram a rival, survive the police, fight a gang, win a street
+// race). A beacon marks the current objective; finishing a mission pays out
+// and unlocks the next. The last two missions gate on respect rank (M9 needs
+// Wheelman, M10 needs King of Solmar). After the finale, timed delivery jobs
+// keep the city paying.
 import * as THREE from '../vendor/three.module.min.js';
 import { PLACES, ROAD_XS, ROAD_ZS, clamp } from './config.js';
 import { spawnCar, syncCarMesh, damageCar } from './vehicles.js';
 import { spawnPed } from './pedestrians.js';
+import { RANKS, RESPECT_PER_MISSION } from './respect.js';
+import { RACE_START } from './races.js';
+import { SHOPS } from './shops.js';
+
+const ARMS = SHOPS.find((s) => s.id === 'arms');
 
 export const MISSIONS = [
   {
@@ -61,6 +68,43 @@ export const MISSIONS = [
       { type: 'driveTo', x: PLACES.lookout.x, z: PLACES.lookout.z, r: 14, text: 'Drive to Lookout Point' },
     ],
   },
+  {
+    name: 'Street King', reward: 700, start: RACE_START,
+    briefing: 'The street-racing crew runs the night races from the checkered flag. Win one and the whole city learns your name.',
+    steps: [
+      { type: 'enterCar', text: 'Get in a car — the race starts at the line' },
+      { type: 'raceWin', text: 'Win the street race' },
+      { type: 'driveTo', x: PLACES.start.x, z: PLACES.start.z, r: 14, text: 'Drive home to the Safehouse' },
+    ],
+  },
+  {
+    name: "The Fixer's Cut", reward: 800, start: PLACES.garage,
+    briefing: "The Fixer wants his cut delivered in style: tune the car at Pay 'n Spray, stock up at Solmar Arms, then bring the package to his yard.",
+    steps: [
+      { type: 'enterCar', text: 'Get in a car' },
+      { type: 'upgrade', x: PLACES.garage.x, z: PLACES.garage.z, r: 14, text: "Buy an upgrade at Pay 'n Spray" },
+      { type: 'shopBuy', x: ARMS.x, z: ARMS.z, r: 16, text: 'Buy something at Solmar Arms' },
+      { type: 'driveTo', x: PLACES.fixerYard.x, z: PLACES.fixerYard.z, r: 14, text: "Deliver the package to the Fixer's Yard" },
+    ],
+  },
+  {
+    name: 'Wheelman', reward: 900, start: PLACES.warehouse, requiredRank: 2,
+    briefing: 'REQUIRES WHEELMAN RANK (300 respect). The Fixer only trusts a proven wheelman with this one: steal the gold Comet GT from the Marina and run it to the club — the heat will be on you the whole way.',
+    steps: [
+      { type: 'enterTargetCar', text: 'Steal the gold Comet GT at the Marina', spawn: { x: PLACES.marina.x, z: PLACES.marina.z - 16, kind: 'sports', color: 0xe8b93c } },
+      { type: 'driveTo', x: PLACES.club.x, z: PLACES.club.z, r: 14, time: 180, text: 'Run the Comet GT to Club Mirage', wanted: 2 },
+      { type: 'escape', text: 'Lose the cops' },
+    ],
+  },
+  {
+    name: 'Emperor of the Bay', reward: 1200, start: PLACES.start, requiredRank: 3,
+    briefing: 'REQUIRES KING OF SOLMAR RANK (600 respect). The Vipers are back with everything they have. End it at the Marina — then take the Lookout and own this city for good.',
+    steps: [
+      { type: 'goto', x: PLACES.marina.x, z: PLACES.marina.z, r: 20, text: 'Meet the Vipers at the Marina' },
+      { type: 'combat', x: PLACES.marina.x, z: PLACES.marina.z, count: 6, text: 'Take down the Vipers (0/6)' },
+      { type: 'driveTo', x: PLACES.lookout.x, z: PLACES.lookout.z, r: 14, text: 'Drive to Lookout Point' },
+    ],
+  },
 ];
 
 export function createMissions(G) {
@@ -91,6 +135,14 @@ export function createMissions(G) {
     get def() { return this.active ? this.active.def : null; },
     get step() { return this.active ? this.active.def.steps[this.active.stepIdx] : null; },
 
+    // The respect rank a mission needs (0 = open to everyone), and whether
+    // the player is still below it.
+    missionRequiredRank(i) { return MISSIONS[i].requiredRank || 0; },
+    missionGated(i) {
+      const req = this.missionRequiredRank(i);
+      return !!G.respect && G.respect.rank < req;
+    },
+
     objectiveText() {
       if (this.active) {
         const s = this.step;
@@ -101,7 +153,11 @@ export function createMissions(G) {
         return s.text;
       }
       if (this.job) return `Delivery job: reach the marker ($${this.job.reward})`;
-      if (this.index < MISSIONS.length) return `Go to the yellow marker: ${MISSIONS[this.index].name}`;
+      if (this.index < MISSIONS.length) {
+        const next = MISSIONS[this.index];
+        const req = next.requiredRank ? ` (requires ${RANKS[next.requiredRank].name} rank)` : '';
+        return `Go to the yellow marker: ${next.name}${req}`;
+      }
       return 'Free roam — explore Solmar Bay';
     },
 
@@ -109,6 +165,7 @@ export function createMissions(G) {
       const s = this.step;
       if (!s) return;
       this.active.timer = s.time || s.seconds || 0;
+      this.active.stepData = null;
       if (s.wanted) G.police.setWanted(s.wanted);
       if (s.type === 'enterTargetCar' && s.spawn) {
         this.active.targetCar = spawnCar(G, { x: s.spawn.x, z: s.spawn.z, heading: 0, role: 'parked', kind: s.spawn.kind, color: s.spawn.color });
@@ -121,6 +178,15 @@ export function createMissions(G) {
       }
       if (s.type === 'combat') this.spawnEnemies(s.x, s.z, s.count);
       if (s.type === 'survive') G.police.setWanted(s.wanted || 3);
+      // New-system steps record a baseline at the start, and complete when
+      // the player does the thing: a race win after this step began, any
+      // garage upgrade bought, any shop purchase made.
+      if (s.type === 'raceWin') this.active.stepData = { wins: G.races ? G.races.wins : 0 };
+      if (s.type === 'upgrade') {
+        const o = G.garage.owned;
+        this.active.stepData = { engine: o.engine, armor: o.armor, paint: o.paint };
+      }
+      if (s.type === 'shopBuy') this.active.stepData = { purchases: G.shops ? G.shops.purchases : 0 };
       G.hud.notify(this.active.def.name.toUpperCase(), s.text);
     },
 
@@ -153,10 +219,16 @@ export function createMissions(G) {
 
     startMission(i) {
       const def = MISSIONS[i];
-      this.active = { def, stepIdx: 0, timer: 0, targetCar: null };
+      if (this.missionGated(i)) {
+        const req = RANKS[def.requiredRank];
+        G.hud.notify('LOCKED', `Requires ${req.name} rank — ${req.min} respect (you have ${G.respect.points})`);
+        return false;
+      }
+      this.active = { def, stepIdx: 0, timer: 0, targetCar: null, stepData: null };
       G.hud.showBriefing(def.name, def.briefing);
       G.audio.jingle();
       this.beginStep();
+      return true;
     },
 
     completeMission() {
@@ -164,6 +236,7 @@ export function createMissions(G) {
       G.player.money += def.reward;
       G.audio.coin();
       G.hud.notify('MISSION COMPLETE', `${def.name} — +$${def.reward}`);
+      G.respect?.addRespect(RESPECT_PER_MISSION);
       this.index += 1;
       this.active = null;
       if (this.index >= MISSIONS.length) {
@@ -269,7 +342,13 @@ export function createMissions(G) {
       let mx = 0, mz = 0, show = false;
       if (this.active) {
         const s = this.step;
-        if (s.x !== undefined) { mx = s.x; mz = s.z; show = true; }
+        if (s.type === 'raceWin') {
+          // Before the race, the beacon sits on the start line; once the
+          // race runs, it follows the next checkpoint.
+          const cp = G.races?.nextCheckpoint;
+          if (cp) { mx = cp.x; mz = cp.z; show = true; }
+          else { mx = RACE_START.x; mz = RACE_START.z; show = true; }
+        } else if (s.x !== undefined) { mx = s.x; mz = s.z; show = true; }
         else if (s.type === 'enterTargetCar' && this.active.targetCar) { mx = this.active.targetCar.x; mz = this.active.targetCar.z; show = true; }
         else if (s.type === 'chase' && t) { mx = t.x; mz = t.z; show = true; }
         else if (s.type === 'combat') { const alive = G.enemies.find((e) => !e.dead); if (alive) { mx = alive.x; mz = alive.z; show = true; } }
@@ -286,10 +365,17 @@ export function createMissions(G) {
         ring.scale.setScalar(pulse + 0.3);
       }
 
-      // Start the next mission by reaching its marker.
+      // Start the next mission by reaching its marker. A gated mission
+      // stays locked: near its marker the requirement shows as a hint, and
+      // at the marker startMission answers with the LOCKED notice.
       if (!this.active && this.index < MISSIONS.length) {
         const s = MISSIONS[this.index].start;
-        if (Math.hypot(p.x - s.x, p.z - s.z) < 10) this.startMission(this.index);
+        const d = Math.hypot(p.x - s.x, p.z - s.z);
+        if (d < 10) this.startMission(this.index);
+        else if (d < 30 && this.missionGated(this.index)) {
+          const req = RANKS[MISSIONS[this.index].requiredRank];
+          G.hud.hint(`Requires ${req.name} rank (${req.min} respect) — you have ${G.respect.points}`, 0.4);
+        }
       }
 
       // Free-roam delivery jobs after the story.
@@ -336,6 +422,12 @@ export function createMissions(G) {
           case 'escape': return G.police.wanted === 0;
           case 'survive': return this.active.timer <= 0;
           case 'combat': return G.enemies.every((e) => e.dead);
+          case 'raceWin': return !!G.races && G.races.wins > (this.active.stepData?.wins ?? 0);
+          case 'upgrade': {
+            const o = G.garage.owned, d = this.active.stepData;
+            return !!d && (o.engine > d.engine || o.armor > d.armor || o.paint !== d.paint);
+          }
+          case 'shopBuy': return !!G.shops && G.shops.purchases > (this.active.stepData?.purchases ?? 0);
           default: return false;
         }
       })();
