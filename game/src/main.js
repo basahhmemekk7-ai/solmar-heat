@@ -91,7 +91,11 @@ G.scarePeds = (x, z, r) => scarePeds(G, x, z, r);
 G.pedsHit = (ped, byCar) => hitPed(G, ped, byCar);
 G.damageCar = (car, amount) => damageCar(G, car, amount);
 G.save = () => saveGame(G);
-spawnTraffic(G, 16);
+// 28 cars over 8,640m of road: dense enough that a player on foot can
+// flag one down within a minute anywhere in the city (16 left most
+// streets empty for minutes at a time), sparse enough that the roads
+// never jam.
+spawnTraffic(G, 28);
 spawnParked(G, 18);
 // A few cars always wait near the safehouse, so the first mission starts at once.
 spawnCar(G, { x: -6, z: 44, heading: 0, role: 'parked' });
