@@ -2,7 +2,7 @@
 // ?seed=N rebuilds the same city; ?shot=chase|city|mission|start stages a scene,
 // plays it forward a fixed number of steps and sets window.__shotReady.
 import * as THREE from '../vendor/three.module.min.js';
-import { STEP, SCREEN_TITLE, SCREEN_PLAY, SCREEN_PAUSED, SCREEN_OVER, SCREEN_HELP, PLACES, REPAIR_COST, BUST_FINE, SAVE_KEY, clamp } from './config.js';
+import { STEP, SCREEN_TITLE, SCREEN_PLAY, SCREEN_PAUSED, SCREEN_OVER, SCREEN_HELP, PLACES, BUST_FINE, SAVE_KEY, clamp } from './config.js';
 import { createRandom } from './random.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
@@ -10,8 +10,15 @@ import { buildCity } from './city.js';
 import { spawnTraffic, spawnParked, updateTraffic, drivePlayerCar, damageCar, spawnCar } from './vehicles.js';
 import { spawnPeds, updatePeds, hitPed, scarePeds, spawnPed } from './pedestrians.js';
 import { createPlayer, updatePlayer } from './player.js';
+import { createWeapons, updateWeapons, switchWeapon } from './weapons.js';
+import { createGarage, updateGarage, closeGarageMenu } from './garage.js';
+import { createShops, updateShops, closeShopsMenu } from './shops.js';
+import { createRespect } from './respect.js';
+import { createRaces, updateRaces } from './races.js';
+import { createRoadblocks, updateRoadblocks } from './roadblocks.js';
+import { createDistricts, updateDistricts } from './districts.js';
 import { createPolice } from './police.js';
-import { createMissions } from './missions.js';
+import { createMissions, MISSIONS } from './missions.js';
 import { createHud } from './hud.js';
 import { createCameraRig } from './camera.js';
 import { createEffects } from './effects.js';
@@ -76,6 +83,7 @@ const G = {
   player: null, playerCar: null,
   elapsed: 0, shake: 0, screen: SCREEN_TITLE,
   city: null, police: null, missions: null, hud: null, audio: null, input: null, cameraRig: null, effects: null,
+  weapons: null, garage: null, shops: null, respect: null, races: null, roadblocks: null, districts: null,
 };
 G.city = buildCity(scene, rng);
 G.input = createInput(canvas);
@@ -85,6 +93,13 @@ G.player = createPlayer(G, PLACES.start.x, PLACES.start.z);
 G.police = createPolice(G);
 G.missions = createMissions(G);
 G.hud = createHud(G);
+G.weapons = createWeapons(G);
+G.garage = createGarage(G);
+G.shops = createShops(G);
+G.respect = createRespect(G);
+G.races = createRaces(G);
+G.roadblocks = createRoadblocks(G);
+G.districts = createDistricts(G);
 G.cameraRig = createCameraRig(G);
 G.spawnPed = (x, z) => spawnPed(G, x, z);
 G.scarePeds = (x, z, r) => scarePeds(G, x, z, r);
@@ -109,7 +124,7 @@ G.gameOver = function (kind) {
   G.input.unlock();
   G.audio.setSiren(false);
   G.audio.setEngine(0, false);
-  const stats = `Missions ${G.missions.index}/6 · $${Math.floor(G.player.money)} · ${Math.floor(G.elapsed / 60)} min in Solmar Bay`;
+  const stats = `Missions ${G.missions.index}/${MISSIONS.length} · $${Math.floor(G.player.money)} · ${Math.floor(G.elapsed / 60)} min in Solmar Bay · Rank: ${G.respect.rankName}`;
   G.hud.setOver(kind, stats);
   G.hud.showScreen(SCREEN_OVER);
   G.overKind = kind;
@@ -135,8 +150,8 @@ function startPlaying() {
   G.screen = SCREEN_PLAY;
   G.hud.showScreen('');
   G.audio.ensure();
-  if (!G.missions.active && G.missions.index < 6) {
-    G.hud.notify('SOLMAR BAY', G.missions.index === 0 ? 'Follow the yellow marker to start your first mission' : `Next mission: ${G.missions.index + 1}/6`);
+  if (!G.missions.active && G.missions.index < MISSIONS.length) {
+    G.hud.notify('SOLMAR BAY', G.missions.index === 0 ? 'Follow the yellow marker to start your first mission' : `Next mission: ${G.missions.index + 1}/${MISSIONS.length}`);
   }
 }
 
@@ -148,7 +163,13 @@ function applySave(d) {
   p.z = d.z ?? PLACES.start.z;
   p.mesh.position.set(p.x, 0, p.z);
   G.elapsed = d.elapsed ?? 0;
-  G.missions.index = clamp(d.missionIndex ?? 0, 0, 6);
+  G.missions.index = clamp(d.missionIndex ?? 0, 0, MISSIONS.length);
+  if (d.weapons) {
+    Object.assign(G.weapons.ammo, d.weapons.ammo || {});
+    if (d.weapons.current) switchWeapon(G, d.weapons.current);
+  }
+  if (d.garage) Object.assign(G.garage.owned, d.garage);
+  if (typeof d.respect === 'number') G.respect.points = d.respect;
   G.cameraRig.snap(p.x, p.z, 0, 0.4);
 }
 
@@ -173,25 +194,14 @@ function stepWorld(dt, driveInput) {
   G.police.update(dt);
   G.missions.update(dt);
   G.effects.update(dt);
+  updateWeapons(G, dt);
+  updateGarage(G, dt);
+  updateShops(G, dt);
+  updateRaces(G, dt);
+  updateRoadblocks(G, dt);
+  updateDistricts(G, dt);
 
-  // Pay 'n Spray: repair + lose the cops for $100.
   const p = G.player;
-  if (G.screen === SCREEN_PLAY && G.playerCar) {
-    const near = Math.hypot(p.x - PLACES.garage.x, p.z - PLACES.garage.z) < 14;
-    if (near) {
-      G.hud.hint(`Press E — Pay 'n Spray: repair car & lose the cops ($${REPAIR_COST})`, 0.4);
-      if (G.input.take('KeyE')) {
-        if (p.money >= REPAIR_COST && (G.playerCar.health < 100 || G.police.wanted > 0)) {
-          p.money -= REPAIR_COST;
-          G.playerCar.health = 100;
-          G.police.clearWanted();
-          G.audio.coin();
-          G.hud.notify("PAY 'N SPRAY", 'Good as new — and the cops lost your trail');
-        } else if (p.money < REPAIR_COST) G.hud.hint('Not enough cash', 1.5);
-        else G.hud.hint('Car is already in perfect shape', 1.5);
-      }
-    }
-  }
   if (G.screen === SCREEN_PLAY && p.onFoot) {
     const car = p.nearestCar(4.5);
     if (car) G.hud.hint('Press F to enter the car', 0.4);
@@ -243,11 +253,17 @@ function handleActions() {
       startPlaying();
     } else if (input.take('KeyH')) showHelp(SCREEN_TITLE);
   } else if (G.screen === SCREEN_PLAY) {
-    if (input.take('KeyP') || input.take('Escape')) {
+    // An open garage/shop menu swallows Esc/E (closes the menu); P still pauses.
+    if ((G.garage?.menuOpen || G.shops?.menuOpen) && (input.take('Escape') || input.take('KeyE'))) {
+      if (G.garage?.menuOpen) closeGarageMenu(G);
+      if (G.shops?.menuOpen) closeShopsMenu(G);
+    } else if (input.take('KeyP') || input.take('Escape')) {
+      if (G.garage?.menuOpen) closeGarageMenu(G);
+      if (G.shops?.menuOpen) closeShopsMenu(G);
       G.screen = SCREEN_PAUSED;
       G.input.unlock();
       G.hud.showScreen(SCREEN_PAUSED);
-      G.hud.pauseStats.textContent = `Missions ${G.missions.index}/6 · $${Math.floor(G.player.money)} · ${Math.floor(G.elapsed / 60)} min played`;
+      G.hud.pauseStats.textContent = `Missions ${G.missions.index}/${MISSIONS.length} · $${Math.floor(G.player.money)} · ${Math.floor(G.elapsed / 60)} min played · Rank: ${G.respect.rankName} (${G.respect.points} respect)`;
     } else if (input.take('KeyH')) showHelp(SCREEN_PLAY);
     else if (input.take('KeyR')) G.hud.hint(`Radio: ${G.audio.nextStation()}`, 2);
   } else if (G.screen === SCREEN_PAUSED) {
