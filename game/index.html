@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solmar Heat — Open-World Crime Game</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; font-family: "Segoe UI", system-ui, Arial, sans-serif; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); user-select: none; }
+  .hidden { display: none !important; }
+  /* top-right status */
+  #status { position: absolute; top: 14px; right: 16px; text-align: right; }
+  #stars { font-size: 26px; letter-spacing: 4px; color: #ffd23f; line-height: 1; }
+  #stars .off { color: rgba(255,255,255,.25); }
+  #money { font-size: 24px; font-weight: 800; color: #7dff9a; margin-top: 4px; }
+  #healthWrap { margin-top: 6px; width: 170px; height: 10px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 5px; overflow: hidden; margin-left: auto; }
+  #healthBar { height: 100%; width: 100%; background: linear-gradient(90deg, #ff5a5a, #ff9a3d); transition: width .2s; }
+  #clock { font-size: 13px; opacity: .85; margin-top: 4px; }
+  /* mission panel */
+  #mission { position: absolute; top: 14px; left: 16px; max-width: 380px; background: rgba(8,10,18,.62); border-left: 4px solid #ffd23f; padding: 10px 14px; border-radius: 0 8px 8px 0; }
+  #missionTitle { font-size: 15px; font-weight: 800; letter-spacing: 1px; color: #ffd23f; text-transform: uppercase; }
+  #missionText { font-size: 15px; margin-top: 3px; line-height: 1.35; }
+  #missionTimer { font-size: 20px; font-weight: 800; color: #ff6b6b; margin-top: 2px; }
+  /* minimap */
+  #mapWrap { position: absolute; left: 16px; bottom: 16px; width: 196px; height: 196px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255,255,255,.55); box-shadow: 0 4px 18px rgba(0,0,0,.6); background: #16202c; }
+  #minimap { width: 100%; height: 100%; display: block; }
+  #mapNorth { position: absolute; left: 50%; top: 2px; transform: translateX(-50%); font-size: 12px; font-weight: 800; color: #fff; }
+  /* speed + radio */
+  #drive { position: absolute; right: 18px; bottom: 16px; text-align: right; }
+  #speed { font-size: 44px; font-weight: 900; line-height: 1; }
+  #speedUnit { font-size: 13px; opacity: .8; }
+  #radio { font-size: 13px; color: #ffd23f; margin-top: 4px; font-weight: 700; letter-spacing: 1px; }
+  /* hints + notifications */
+  #hint { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); background: rgba(8,10,18,.7); padding: 8px 16px; border-radius: 20px; font-size: 15px; white-space: nowrap; }
+  #notify { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; font-size: 30px; font-weight: 900; letter-spacing: 2px; color: #ffd23f; opacity: 0; transition: opacity .3s; }
+  #notify small { display: block; font-size: 16px; color: #fff; letter-spacing: 1px; margin-top: 4px; }
+  #wasted { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 90px; font-weight: 900; letter-spacing: 12px; color: #fff; background: radial-gradient(ellipse at center, rgba(0,0,0,.15), rgba(0,0,0,.75)); }
+  /* overlays */
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: linear-gradient(180deg, rgba(10,8,24,.55), rgba(10,8,24,.88)); color: #fff; text-align: center; z-index: 10; pointer-events: auto; }
+  .overlay h1 { font-size: 84px; margin: 0; letter-spacing: 6px; font-weight: 900; background: linear-gradient(180deg, #ffe66d, #ff6b35); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(0 4px 14px rgba(255,107,53,.45)); }
+  .overlay h2 { font-size: 15px; letter-spacing: 8px; color: #7fd4ff; margin: 4px 0 26px; font-weight: 700; }
+  .overlay p { max-width: 560px; line-height: 1.6; color: #dfe6f2; }
+  .btn { pointer-events: auto; cursor: pointer; background: #ff6b35; color: #fff; border: none; font-size: 18px; font-weight: 800; letter-spacing: 1px; padding: 13px 34px; margin: 6px; border-radius: 8px; box-shadow: 0 4px 0 #b23a12; }
+  .btn:hover { background: #ff7d4d; }
+  .btn.alt { background: #22304a; box-shadow: 0 4px 0 #0e1626; }
+  .btn.alt:hover { background: #2c3d5e; }
+  .keys { text-align: left; font-size: 15px; line-height: 2; color: #dfe6f2; background: rgba(0,0,0,.4); padding: 14px 26px; border-radius: 10px; }
+  .keys b { color: #ffd23f; display: inline-block; min-width: 150px; }
+  #briefing { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center; z-index: 9; pointer-events: none; }
+  #briefBox { background: rgba(8,10,18,.85); border-top: 3px solid #ffd23f; padding: 18px 30px 22px; margin-bottom: 90px; max-width: 640px; text-align: center; border-radius: 10px; color: #fff; }
+  #briefBox h3 { margin: 0 0 6px; color: #ffd23f; letter-spacing: 2px; font-size: 22px; }
+  #briefBox p { margin: 0; line-height: 1.5; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 140px rgba(0,0,0,.55); }
+  #statusSr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="vignette"></div>
+<div id="hud">
+  <div id="mission" class="hidden"><div id="missionTitle"></div><div id="missionText"></div><div id="missionTimer" class="hidden"></div></div>
+  <div id="status">
+    <div id="stars"></div>
+    <div id="money">$0</div>
+    <div id="healthWrap"><div id="healthBar"></div></div>
+    <div id="clock"></div>
+  </div>
+  <div id="mapWrap"><canvas id="minimap" width="196" height="196"></canvas><div id="mapNorth">N</div></div>
+  <div id="drive"><div><span id="speed">0</span> <span id="speedUnit">km/h</span></div><div id="radio">SOLMAR FM 101.2</div></div>
+  <div id="hint" class="hidden"></div>
+  <div id="notify"></div>
+  <div id="wasted" class="hidden">WASTED</div>
+</div>
+
+<div id="titleScreen" class="overlay">
+  <h1>SOLMAR HEAT</h1>
+  <h2>AN OPEN-WORLD CRIME STORY &middot; SOLMAR BAY</h2>
+  <p>Kai Marlow owes the wrong people money in a sun-soaked coastal city. Steal cars, outrun the
+  Solmar Bay Police, and take on six story missions to buy back his freedom.</p>
+  <div>
+    <button class="btn" id="btnContinue">CONTINUE</button>
+    <button class="btn" id="btnNew">NEW GAME</button>
+    <button class="btn alt" id="btnHelp">HOW TO PLAY</button>
+  </div>
+  <p style="font-size:13px;opacity:.7">An original game. No affiliation with Rockstar Games or any commercial game.<br>
+  Keyboard + mouse &middot; progress saves automatically &middot; W A S D to move, F to enter a car</p>
+</div>
+
+<div id="pauseScreen" class="overlay hidden">
+  <h1 style="font-size:56px">PAUSED</h1>
+  <p id="pauseStats"></p>
+  <div>
+    <button class="btn" id="btnResume">RESUME</button>
+    <button class="btn alt" id="btnSave">SAVE GAME</button>
+    <button class="btn alt" id="btnHelp2">HOW TO PLAY</button>
+    <button class="btn alt" id="btnTitle">QUIT TO TITLE</button>
+  </div>
+</div>
+
+<div id="helpScreen" class="overlay hidden">
+  <h1 style="font-size:48px">HOW TO PLAY</h1>
+  <div class="keys">
+    <b>W A S D / Arrows</b> Move on foot &middot; drive (W gas, S brake/reverse)<br>
+    <b>Mouse</b> Look around &middot; click the game to capture the mouse<br>
+    <b>Left click</b> Punch up close &middot; shoot your pistol at range<br>
+    <b>F</b> Steal / enter a car &middot; exit a car<br>
+    <b>Shift</b> Sprint on foot &middot; handbrake while driving<br>
+    <b>Space</b> Handbrake &middot; jump on foot<br>
+    <b>E</b> Pay 'n Spray: repair car &amp; lose the cops ($100)<br>
+    <b>R</b> Change radio station &middot; <b>M</b> Mute<br>
+    <b>P / Esc</b> Pause &middot; <b>H</b> This help screen<br>
+    <b>Yellow marker</b> Next story mission &middot; follow the objective panel
+  </div>
+  <div><button class="btn" id="btnHelpClose">GOT IT</button></div>
+</div>
+
+<div id="overScreen" class="overlay hidden">
+  <h1 style="font-size:64px" id="overTitle">WASTED</h1>
+  <p id="overText"></p>
+  <div>
+    <button class="btn" id="btnRetry">TRY AGAIN</button>
+    <button class="btn alt" id="btnTitle2">QUIT TO TITLE</button>
+  </div>
+</div>
+
+<div id="briefing" class="hidden"><div id="briefBox"><h3 id="briefTitle"></h3><p id="briefText"></p></div></div>
+<p id="statusSr" role="status" aria-live="polite"></p>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
