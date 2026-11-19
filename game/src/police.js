@@ -4,6 +4,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { ROAD_XS, ROAD_ZS, clamp, angleDiff } from './config.js';
 import { spawnCar, syncCarMesh, damageCar } from './vehicles.js';
 import { resolveCollisions } from './city.js';
+import { clearRoadblocks } from './roadblocks.js';
 
 export function createPolice(G) {
   const heliGroup = new THREE.Group();
@@ -40,6 +41,9 @@ export function createPolice(G) {
 
     addWanted(n, reason) {
       if (G.screen !== 'play') return;
+      // Street races run with lookouts on the route: no NEW heat while a
+      // race is running (existing stars stay — lose them before the race).
+      if (G.races?.active) return;
       const before = this.wanted;
       this.wanted = clamp(this.wanted + n, 0, 5);
       if (this.wanted > before) {
@@ -62,6 +66,7 @@ export function createPolice(G) {
       this.heliOn = false;
       heliGroup.visible = false;
       G.audio.setSiren(false);
+      clearRoadblocks(G);
     },
     nearestCopDist() {
       let best = Infinity;
