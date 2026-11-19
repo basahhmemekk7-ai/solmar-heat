@@ -4,6 +4,8 @@ import * as THREE from '../vendor/three.module.min.js';
 import { WALK_SPEED, SPRINT_SPEED, clamp } from './config.js';
 import { resolveCollisions } from './city.js';
 import { syncCarMesh } from './vehicles.js';
+import { fireWeapon } from './weapons.js';
+import { applyUpgrades } from './garage.js';
 
 export function createPlayer(G, x, z) {
   const g = new THREE.Group();
@@ -45,6 +47,8 @@ export function createPlayer(G, x, z) {
     player.onFoot = false;
     player.mesh.visible = false;
     G.playerCar = car;
+    // Kai's garage tune (engine/armor/paint) goes onto every car he drives.
+    if (G.garage) applyUpgrades(G, car);
     if (wasTraffic) {
       // The driver bails and runs.
       const p = G.city.randomSidewalkPoint();
@@ -195,7 +199,10 @@ export function updatePlayer(G, dt) {
     else G.hud.hint('No car nearby', 1.2);
   }
 
-  // Combat: punch up close, pistol at range.
+  // Combat: punch up close, current weapon at range (see weapons.js).
+  // The pistol drops a Viper in two hits: the finale is a gunfight, and
+  // three hits per Viper left the player trading against five guns for too
+  // long. (The punch stays at 34.)
   if (input.firing) {
     const target = aimPoint(G);
     p.heading = Math.atan2(target.x - p.x, target.z - p.z);
@@ -210,31 +217,7 @@ export function updatePlayer(G, dt) {
         if (close.health !== undefined) G.missions.damageEnemy(close, 34);
         else G.pedsHit(close, false);
       } else if (p.shootCd <= 0) {
-        p.shootCd = 0.28;
-        G.audio.shot();
-        G.effects.muzzle(G, p.x + Math.sin(p.heading) * 0.6, p.z + Math.cos(p.heading) * 0.6, target.x, target.z);
-        G.police.shotFired(p.x, p.z);
-        // Hitscan: nearest enemy/ped/car within a cone of the aim ray.
-        const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
-        let best = null, bd = 45;
-        const test = (o, r) => {
-          const dx = o.x - p.x, dz = o.z - p.z;
-          const along = dx * fx + dz * fz;
-          const side = Math.abs(dx * fz - dz * fx);
-          if (along > 0 && along < bd && side < r + along * 0.06) { bd = along; best = o; }
-        };
-        for (const e of G.enemies) if (!e.dead) test(e, 1.2);
-        for (const q of G.peds) if (!q.dead) test(q, 1);
-        for (const car of G.cars) if (!car.dead && car !== p.car) test(car, 2);
-        if (best) {
-          G.effects.burst(G, best.x, best.z, 0xffcc66, 6);
-          // The pistol drops a Viper in two hits: the finale is a
-          // gunfight, and three hits per Viper left the player trading
-          // against five guns for too long. (The punch stays at 34.)
-          if (best.health !== undefined && best.role === undefined) G.missions.damageEnemy(best, 50);
-          else if (best.role !== undefined) G.damageCar(best, 20);
-          else G.pedsHit(best, false);
-        }
+        fireWeapon(G, target);
       }
     }
   }
