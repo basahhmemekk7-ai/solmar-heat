@@ -228,7 +228,10 @@ export function updatePlayer(G, dt) {
         for (const car of G.cars) if (!car.dead && car !== p.car) test(car, 2);
         if (best) {
           G.effects.burst(G, best.x, best.z, 0xffcc66, 6);
-          if (best.health !== undefined && best.role === undefined) G.missions.damageEnemy(best, 34);
+          // The pistol drops a Viper in two hits: the finale is a
+          // gunfight, and three hits per Viper left the player trading
+          // against five guns for too long. (The punch stays at 34.)
+          if (best.health !== undefined && best.role === undefined) G.missions.damageEnemy(best, 50);
           else if (best.role !== undefined) G.damageCar(best, 20);
           else G.pedsHit(best, false);
         }
