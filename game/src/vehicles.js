@@ -107,17 +107,33 @@ function carAhead(G, car, range) {
   const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
   for (const o of G.cars) {
     if (o === car || o.dead) continue;
+    // While the player is on foot, cops swarm the player and sit on the
+    // road: traffic queuing behind the cordon never reaches the player.
+    // Let traffic pass them (traffic cars never collide anyway).
+    if (o.role === 'police' && G.player.onFoot) continue;
     const dx = o.x - car.x, dz = o.z - car.z;
     const ahead = dx * fx + dz * fz;
     if (ahead > 0 && ahead < range && Math.abs(dx * fz - dz * fx) < 3.2) return true;
   }
-  // Also stop for the player on foot in the way.
-  if (G.player.onFoot) {
-    const dx = G.player.x - car.x, dz = G.player.z - car.z;
-    const ahead = dx * fx + dz * fz;
-    if (ahead > 0 && ahead < range * 0.7 && Math.abs(dx * fz - dz * fx) < 2.5) return true;
-  }
   return false;
+}
+
+// A player on foot in the road: traffic yields — it crawls as it
+// approaches and stops close, so the player can flag a car down and
+// steal it. Returns -1 to stop, a speed cap to crawl at, or 0 to ignore.
+// A player on the sidewalk is outside the 4m band, so normal walking
+// doesn't slow traffic. The stop trigger is braking distance + 3m, so
+// the car halts ~3m short whatever speed it was doing.
+function playerYield(G, car) {
+  if (!G.player.onFoot) return 0;
+  const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
+  const dx = G.player.x - car.x, dz = G.player.z - car.z;
+  const ahead = dx * fx + dz * fz;
+  if (ahead <= 0 || Math.abs(dx * fz - dz * fx) > 4) return 0;
+  const stopAt = (car.speed * car.speed) / 36 + 3;
+  if (ahead < stopAt) return -1;
+  if (ahead < 16) return 5;
+  return 0;
 }
 
 function steerToward(car, tx, tz, dt, rate) {
@@ -145,7 +161,15 @@ export function updateTraffic(G, dt) {
     const dx = car.wpX - car.x, dz = car.wpZ - car.z;
     if (dx * dx + dz * dz < 64) pickWaypoint(G, car);
     const blocked = carAhead(G, car, 14);
-    const target = blocked ? 0 : car.cruise;
+    // Yielding to a pedestrian is not being stuck: a car waiting for
+    // someone in the road stays put until they move or steal it.
+    const giveWay = playerYield(G, car);
+    // Stuck too long behind a parked car or nose-to-nose at an
+    // intersection: give up on this route and pick a new one, so a
+    // blocked lane clears instead of freezing the whole fleet.
+    if (blocked && Math.abs(car.speed) < 1.5) car.stuck += dt; else car.stuck = 0;
+    if (car.stuck > 8) { pickWaypoint(G, car); car.stuck = 0; }
+    const target = blocked || giveWay < 0 ? 0 : giveWay > 0 ? Math.min(car.cruise, giveWay) : car.cruise;
     car.speed += clamp(target - car.speed, -18 * dt, 8 * dt);
     steerToward(car, car.wpX, car.wpZ, dt, 2.4);
     car.x += Math.sin(car.heading) * car.speed * dt;
@@ -194,12 +218,21 @@ export function drivePlayerCar(G, car, input, dt) {
   const c = resolveCollisions(car.x, car.z, 2.3, G.city.colliders);
   if (c.hit && Math.abs(car.speed) > 4) {
     if (car.crashCd <= 0) {
-      damageCar(G, car, Math.abs(car.speed) * 0.9);
+      // A building hit at chase speed cost 27 HP (0.9 x speed): one
+      // clipped corner all but ended a chase. 0.5 keeps crashes
+      // meaningful (15 HP at 108 km/h) without making high-speed
+      // driving — the game's core — a death sentence on any mistake.
+      damageCar(G, car, Math.abs(car.speed) * 0.5);
       G.audio.crash();
       car.crashCd = 0.6;
+      // The speed cut is gated by the same cooldown: ungated, it ran
+      // every frame while the car touched a wall, so a scrape glued
+      // the car to the building (speed x0.35 per frame) and the cops
+      // rammed it to death where it stood. Now a scrape costs one
+      // cut per 0.6s and the car can power through it.
+      car.speed *= 0.35;
     }
     G.shake = Math.min(1, Math.abs(car.speed) / 20);
-    car.speed *= 0.35;
     crashed = true;
   }
   car.x = c.x; car.z = c.z;
@@ -223,14 +256,23 @@ export function drivePlayerCar(G, car, input, dt) {
         syncCarMesh(o);
       }
       const impact = Math.abs(car.speed) + Math.abs(o.speed || 0);
-      if (impact > 6 && car.crashCd <= 0) {
-        // Police contact is not general impact damage: the ram block in
-        // police.js owns cop damage (one ram a second per cop). Charging
-        // it here too would double-tax the player car for every cop touch.
-        if (o.role !== 'police') {
-          damageCar(G, car, impact * 0.55);
-          damageCar(G, o, impact * 0.7);
-        }
+      // Police contact is not general impact damage: the ram block in
+      // police.js owns cop contact (damage, bounce, sound, shake).
+      // Charging it here too double-taxed the player car — and the speed
+      // cut below halved the player's speed every 0.6s of contact, so two
+      // cops leaning on the car pinned it under 40 km/h while Rico drove
+      // away and the rams wrecked it.
+      if (impact > 6 && car.crashCd <= 0 && o.role !== 'police') {
+        // Ramming costs the player less than the target: the chase
+        // mission is won by ramming, so the player's car must survive
+        // its own hits. Three rams at 0.35 cost ~50 HP on their own,
+        // leaving no margin for cop rams or a clipped corner; at 0.25
+        // the same chase costs ~35 HP.
+        damageCar(G, car, impact * 0.25);
+        // The chase target is meant to be stopped in ~3 rams; bystander
+        // traffic is sturdier, so a car the chase clipped is still
+        // worth stealing afterwards instead of a 20-HP death trap.
+        damageCar(G, o, impact * (o.role === 'target' ? 0.7 : 0.4));
         G.audio.crash();
         car.crashCd = 0.6;
         G.shake = Math.min(1, impact / 24);
@@ -260,7 +302,11 @@ export function drivePlayerCar(G, car, input, dt) {
 export function spawnTraffic(G, count) {
   for (let i = 0; i < count; i++) {
     const p = G.city.randomRoadPoint();
-    const alongX = G.rng.chance(0.5);
+    // Travel ALONG the road this point is on, not across it: a point on
+    // an east-west road (z is a road line) drives along X, one on a
+    // north-south road along Z. Random orientation put half the cars
+    // across their road, trapping lanes and grinding through blocks.
+    const alongX = ROAD_ZS.includes(p.z);
     const dir = G.rng.chance(0.5) ? 1 : -1;
     const car = spawnCar(G, {
       x: alongX ? p.x : p.x + (dir === 1 ? -3.5 : 3.5),
@@ -276,11 +322,17 @@ export function spawnTraffic(G, count) {
 export function spawnParked(G, count) {
   for (let i = 0; i < count; i++) {
     const p = G.city.randomRoadPoint();
-    const alongX = G.rng.chance(0.5);
+    // Park ALONG the road this point is on (see spawnTraffic): a random
+    // orientation left half the parked cars sitting across the centre
+    // line, trapping the lane behind them.
+    const alongX = ROAD_ZS.includes(p.z);
     const dir = G.rng.chance(0.5) ? 1 : -1;
+    // Parked tight to the curb (8m off the line): at 6m the car sat 2.5m
+    // from the traffic lane, inside carAhead's 3.2m window, and blocked
+    // the lane permanently. 8m clears the window; buildings start at 10m.
     spawnCar(G, {
-      x: alongX ? p.x : p.x + (dir === 1 ? -6 : 6),
-      z: alongX ? p.z + (dir === 1 ? 6 : -6) : p.z,
+      x: alongX ? p.x : p.x + (dir === 1 ? -8 : 8),
+      z: alongX ? p.z + (dir === 1 ? 8 : -8) : p.z,
       heading: alongX ? (dir === 1 ? Math.PI / 2 : -Math.PI / 2) : (dir === 1 ? 0 : Math.PI),
       role: 'parked',
     });
