@@ -1,5 +1,6 @@
-// Save / load through localStorage: money, health, mission progress, position and
-// the clock. Saves happen after every mission and job, and from the pause menu.
+// Save / load through localStorage: money, health, mission progress, position,
+// the clock, weapons + ammo, garage upgrades and respect. Saves happen after
+// every mission and job, and from the pause menu.
 import { SAVE_KEY } from './config.js';
 
 export function saveGame(G) {
@@ -10,6 +11,9 @@ export function saveGame(G) {
       missionIndex: G.missions.index,
       x: Math.round(p.x * 10) / 10, z: Math.round(p.z * 10) / 10,
       elapsed: Math.round(G.elapsed),
+      weapons: G.weapons ? { current: G.weapons.current, ammo: { ...G.weapons.ammo } } : undefined,
+      garage: G.garage ? { ...G.garage.owned } : undefined,
+      respect: G.respect ? G.respect.points : 0,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
