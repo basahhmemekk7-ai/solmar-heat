@@ -1,6 +1,9 @@
 // The HUD: wanted stars, money, health, speed, radio, mission panel, minimap and
 // menus. The minimap reuses the city's ground texture as its base map.
 import { CITY_R, PLACES } from './config.js';
+import { WEAPONS } from './weapons.js';
+import { RACE_START } from './races.js';
+import { MISSIONS } from './missions.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,11 +16,12 @@ export function createHud(G) {
     overTitle: $('overTitle'), overText: $('overText'), pauseStats: $('pauseStats'),
     briefing: $('briefing'), briefTitle: $('briefTitle'), briefText: $('briefText'),
     btnContinue: $('btnContinue'), map: $('minimap'),
+    weapon: $('weapon'), respect: $('respect'),
     hudRoot: $('hud'),
   };
   const mctx = el.map.getContext('2d');
   let notifyT = 0, hintT = 0, briefT = 0;
-  let lastMoney = -1, lastStars = -1;
+  let lastMoney = -1, lastStars = -1, lastWeapon = '', lastRespect = '';
 
   const hud = {
     pauseStats: el.pauseStats,
@@ -112,6 +116,47 @@ export function createHud(G) {
           mctx.fillRect(gx - 3, gy - 3, 6, 6);
         }
       }
+      // Shop icons (cyan squares).
+      if (G.shops) {
+        for (const shop of G.shops.list) {
+          const [sx, sy] = toMap(shop.x, shop.z);
+          if (sx > 4 && sx < S - 4 && sy > 4 && sy < S - 4) {
+            mctx.fillStyle = '#22d3ee';
+            mctx.fillRect(sx - 3, sy - 3, 6, 6);
+          }
+        }
+      }
+      // Street race start (magenta square) + next checkpoint (orange diamond).
+      if (G.races) {
+        const [rx, ry] = toMap(RACE_START.x, RACE_START.z);
+        if (rx > 4 && rx < S - 4 && ry > 4 && ry < S - 4) {
+          mctx.fillStyle = '#ff4fd8';
+          mctx.fillRect(rx - 3, ry - 3, 6, 6);
+        }
+        const cp = G.races.nextCheckpoint;
+        if (cp) {
+          const [cx, cy] = toMap(cp.x, cp.z);
+          mctx.fillStyle = '#ff9a3d';
+          mctx.beginPath();
+          mctx.moveTo(cx, cy - 5); mctx.lineTo(cx + 5, cy); mctx.lineTo(cx, cy + 5); mctx.lineTo(cx - 5, cy);
+          mctx.closePath(); mctx.fill();
+        }
+      }
+      // Roadblocks (blue squares) + spike strips (orange squares).
+      if (G.roadblocks) {
+        for (const b of G.roadblocks.blocks) {
+          for (const car of b.cars) {
+            const [bx, by] = toMap(car.x, car.z);
+            mctx.fillStyle = '#4488ff';
+            mctx.fillRect(bx - 3, by - 3, 6, 6);
+          }
+        }
+        for (const s of G.roadblocks.strips) {
+          const [sx, sy] = toMap(s.x, s.z);
+          mctx.fillStyle = '#ff9a3d';
+          mctx.fillRect(sx - 3, sy - 3, 6, 6);
+        }
+      }
       // Player arrow, rotated by heading.
       mctx.translate(S / 2, S / 2);
       mctx.rotate(Math.atan2(Math.sin(p.heading), Math.cos(p.heading)));
@@ -138,13 +183,23 @@ export function createHud(G) {
         el.money.textContent = `$${Math.floor(p.money)}`;
       }
       el.healthBar.style.width = `${Math.max(0, p.health)}%`;
+      if (G.weapons) {
+        const w = G.weapons;
+        const label = `${WEAPONS[w.current].name.toUpperCase()} · ${w.ammo[w.current]} rounds`;
+        if (label !== lastWeapon) { lastWeapon = label; el.weapon.textContent = label; }
+      }
+      if (G.respect) {
+        const r = G.respect;
+        const label = `RANK: ${r.rankName.toUpperCase()} · ${r.points} PTS`;
+        if (label !== lastRespect) { lastRespect = label; el.respect.textContent = label; }
+      }
       const car = G.playerCar;
       const kmh = car ? Math.abs(car.speed) * 3.6 : Math.abs(p.speed) * 3.6;
       el.speed.textContent = String(Math.round(kmh));
       el.radio.textContent = G.audio.stationName;
       // Mission panel.
       const M = G.missions;
-      if (M.active || M.job || M.index < 6) {
+      if (M.active || M.job || M.index < MISSIONS.length) {
         el.mission.classList.remove('hidden');
         el.missionTitle.textContent = M.active ? M.active.def.name : (M.job ? 'Delivery Job' : 'Next Mission');
         el.missionText.textContent = M.objectiveText();
@@ -155,7 +210,7 @@ export function createHud(G) {
           el.missionTimer.textContent = `${mm}:${String(ss).padStart(2, '0')}`;
         } else el.missionTimer.classList.add('hidden');
       } else el.mission.classList.add('hidden');
-      el.clock.textContent = `Day 1 · ${String(17 + Math.floor(G.elapsed / 3600)).padStart(2, '0')}:${String(Math.floor(G.elapsed / 60) % 60).padStart(2, '0')} · Missions ${M.index}/6`;
+      el.clock.textContent = `Day 1 · ${String(17 + Math.floor(G.elapsed / 3600)).padStart(2, '0')}:${String(Math.floor(G.elapsed / 60) % 60).padStart(2, '0')} · Missions ${M.index}/${MISSIONS.length}`;
       this.drawMinimap();
     },
   };
