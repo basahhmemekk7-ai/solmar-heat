@@ -113,6 +113,9 @@ export function createPolice(G) {
       }
 
       let anySeen = false;
+      // Closest live cop: only it closes in on an on-foot player.
+      let nearD = Infinity;
+      for (const c of this.cops) if (!c.dead) nearD = Math.min(nearD, Math.hypot(c.x - p.x, c.z - p.z));
       for (const cop of this.cops) {
         if (cop.dead) continue;
         const dx = p.x - cop.x, dz = p.z - cop.z;
@@ -123,11 +126,15 @@ export function createPolice(G) {
         const d = angleDiff(want, cop.heading);
         const top = p.onFoot ? 17 : 26 + this.wanted * 1.5;
         let target = dist < 6 ? top * 0.6 : top;
+        let holding = false;
         if (p.onFoot) {
           // On foot the player is arrested, not run down: ease off as the
           // cop closes in and stop beside the player, so the bust timer
-          // can run instead of the player dying under the wheels.
-          if (dist <= 3.5) target = 0;
+          // can run instead of the player dying under the wheels. Only
+          // the nearest cop closes in; the rest hold a ~15m perimeter
+          // instead of piling onto the player and blocking the road.
+          if (dist > nearD + 0.01 && dist < 15) { target = 0; holding = true; }
+          else if (dist <= 3.5) target = 0;
           else if (dist < 12) target = Math.min(target, 5);
           // Fresh out of a wreck, the player gets a moment to get up: the
           // cops crawl in instead of arriving at full chase speed.
@@ -165,7 +172,15 @@ export function createPolice(G) {
             // the damage ticks every step, and two cops shred a healthy car
             // in under two seconds of contact.
             if (Math.abs(cop.speed) > 8 && cop.ramCd <= 0) {
-              damageCar(G, pc, Math.abs(cop.speed) * 0.5);
+              // A ram's bite scales with the COP's speed, so at chase
+              // speeds — cops doing 28 m/s to keep up with a fleeing
+              // player — each hit dealt 7 HP and two cops shredded the
+              // car before it could finish the chase, even when the
+              // player outran them on every straight. 0.15 keeps the
+              // ram a real threat (4.2 HP at 28 m/s; a stopped car at
+              // 1 star still dies in ~35s) without making a fast chase
+              // unwinnable by itself.
+              damageCar(G, pc, Math.abs(cop.speed) * 0.15);
               G.audio.crash();
               G.shake = Math.min(1, Math.abs(cop.speed) / 22);
               cop.speed *= 0.5;
@@ -175,7 +190,8 @@ export function createPolice(G) {
           }
         }
         // Stuck against a building? Reverse out, or respawn near the player.
-        if (Math.abs(cop.speed) < 1.5 && dist > 12) cop.stuck += dt; else cop.stuck = 0;
+        // (A cop holding the on-foot perimeter is parked on purpose, not stuck.)
+        if (Math.abs(cop.speed) < 1.5 && dist > 12 && !holding) cop.stuck += dt; else cop.stuck = 0;
         if (cop.stuck > 2.5) {
           cop.speed = -6;
           cop.heading += Math.PI * 0.5;
