@@ -18,6 +18,7 @@
   #healthWrap { margin-top: 6px; width: 170px; height: 10px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 5px; overflow: hidden; margin-left: auto; }
   #healthBar { height: 100%; width: 100%; background: linear-gradient(90deg, #ff5a5a, #ff9a3d); transition: width .2s; }
   #clock { font-size: 13px; opacity: .85; margin-top: 4px; }
+  #respect { font-size: 13px; font-weight: 800; letter-spacing: 1px; color: #7fd4ff; margin-top: 4px; }
   /* mission panel */
   #mission { position: absolute; top: 14px; left: 16px; max-width: 380px; background: rgba(8,10,18,.62); border-left: 4px solid #ffd23f; padding: 10px 14px; border-radius: 0 8px 8px 0; }
   #missionTitle { font-size: 15px; font-weight: 800; letter-spacing: 1px; color: #ffd23f; text-transform: uppercase; }
@@ -27,6 +28,30 @@
   #mapWrap { position: absolute; left: 16px; bottom: 16px; width: 196px; height: 196px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255,255,255,.55); box-shadow: 0 4px 18px rgba(0,0,0,.6); background: #16202c; }
   #minimap { width: 100%; height: 100%; display: block; }
   #mapNorth { position: absolute; left: 50%; top: 2px; transform: translateX(-50%); font-size: 12px; font-weight: 800; color: #fff; }
+  /* weapon indicator + weapon wheel */
+  #weapon { position: absolute; left: 16px; bottom: 224px; font-size: 15px; font-weight: 800; letter-spacing: 1px; background: rgba(8,10,18,.62); padding: 6px 12px; border-radius: 6px; border-left: 4px solid #ff9a3d; }
+  #district { position: absolute; left: 16px; bottom: 262px; font-size: 15px; font-weight: 800; letter-spacing: 1px; background: rgba(8,10,18,.62); padding: 6px 12px; border-radius: 6px; border-left: 4px solid #22d3ee; }
+  #weaponWheel { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); display: flex; gap: 10px; }
+  .wheelSlot { background: rgba(8,10,18,.72); border: 2px solid rgba(255,255,255,.3); border-radius: 10px; padding: 10px 18px; text-align: center; min-width: 110px; }
+  .wheelSlot.current { border-color: #ffd23f; background: rgba(60,45,5,.85); }
+  .wheelSlot b { display: block; font-size: 16px; letter-spacing: 1px; }
+  .wheelSlot span { font-size: 13px; opacity: .85; }
+  /* race panel */
+  #racePanel { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(8,10,18,.72); border: 2px solid #ff9a3d; border-radius: 8px; padding: 8px 18px; text-align: center; }
+  #racePanel b { color: #ffd23f; letter-spacing: 2px; font-size: 16px; }
+  #racePanel span { display: block; font-size: 14px; margin-top: 2px; }
+  .menuPanel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(8,10,18,.92); border: 2px solid #ffd23f; border-radius: 12px; padding: 20px 26px; color: #fff; z-index: 20; min-width: 380px; text-align: left; box-shadow: 0 8px 40px rgba(0,0,0,.7); }
+  .menuPanel h3 { margin: 0 0 4px; color: #ffd23f; letter-spacing: 2px; font-size: 22px; }
+  .menuPanel .sub { font-size: 14px; opacity: .8; margin-bottom: 12px; }
+  .menuRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.12); font-size: 15px; }
+  .menuRow .price { color: #7dff9a; font-weight: 800; white-space: nowrap; }
+  .menuRow .owned { color: #7fd4ff; font-weight: 700; white-space: nowrap; }
+  .menuBtn { cursor: pointer; background: #ff6b35; color: #fff; border: none; font-size: 14px; font-weight: 800; padding: 7px 14px; border-radius: 6px; white-space: nowrap; }
+  .menuBtn:hover { background: #ff7d4d; }
+  .menuBtn:disabled { background: #444; cursor: default; }
+  .menuBtn.alt { background: #22304a; }
+  .swatch { cursor: pointer; width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); display: inline-block; margin-right: 6px; vertical-align: middle; }
+  .swatch.current { border-color: #ffd23f; border-width: 3px; }
   /* speed + radio */
   #drive { position: absolute; right: 18px; bottom: 16px; text-align: right; }
   #speed { font-size: 44px; font-weight: 900; line-height: 1; }
@@ -38,7 +63,7 @@
   #notify small { display: block; font-size: 16px; color: #fff; letter-spacing: 1px; margin-top: 4px; }
   #wasted { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 90px; font-weight: 900; letter-spacing: 12px; color: #fff; background: radial-gradient(ellipse at center, rgba(0,0,0,.15), rgba(0,0,0,.75)); }
   /* overlays */
-  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: linear-gradient(180deg, rgba(10,8,24,.55), rgba(10,8,24,.88)); color: #fff; text-align: center; z-index: 10; pointer-events: auto; }
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: linear-gradient(180deg, rgba(10,8,24,.55), rgba(10,8,24,.88)); color: #fff; text-align: center; z-index: 10; pointer-events: auto; overflow-y: auto; padding: 20px 0; }
   .overlay h1 { font-size: 84px; margin: 0; letter-spacing: 6px; font-weight: 900; background: linear-gradient(180deg, #ffe66d, #ff6b35); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(0 4px 14px rgba(255,107,53,.45)); }
   .overlay h2 { font-size: 15px; letter-spacing: 8px; color: #7fd4ff; margin: 4px 0 26px; font-weight: 700; }
   .overlay p { max-width: 560px; line-height: 1.6; color: #dfe6f2; }
@@ -46,6 +71,8 @@
   .btn:hover { background: #ff7d4d; }
   .btn.alt { background: #22304a; box-shadow: 0 4px 0 #0e1626; }
   .btn.alt:hover { background: #2c3d5e; }
+  .features { display: flex; flex-wrap: wrap; gap: 6px 8px; justify-content: center; max-width: 680px; margin: 2px 0 16px; }
+  .features span { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.28); padding: 4px 11px; border-radius: 12px; font-size: 13px; color: #dfe6f2; white-space: nowrap; }
   .keys { text-align: left; font-size: 15px; line-height: 2; color: #dfe6f2; background: rgba(0,0,0,.4); padding: 14px 26px; border-radius: 10px; }
   .keys b { color: #ffd23f; display: inline-block; min-width: 150px; }
   #briefing { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center; z-index: 9; pointer-events: none; }
@@ -61,13 +88,18 @@
 <div id="vignette"></div>
 <div id="hud">
   <div id="mission" class="hidden"><div id="missionTitle"></div><div id="missionText"></div><div id="missionTimer" class="hidden"></div></div>
+  <div id="racePanel" class="hidden"></div>
   <div id="status">
     <div id="stars"></div>
     <div id="money">$0</div>
     <div id="healthWrap"><div id="healthBar"></div></div>
     <div id="clock"></div>
+    <div id="respect">RANK: STREET · 0 PTS</div>
   </div>
   <div id="mapWrap"><canvas id="minimap" width="196" height="196"></canvas><div id="mapNorth">N</div></div>
+  <div id="district">DOWNTOWN</div>
+  <div id="weapon">PISTOL · 60 rounds</div>
+  <div id="weaponWheel" class="hidden"></div>
   <div id="drive"><div><span id="speed">0</span> <span id="speedUnit">km/h</span></div><div id="radio">SOLMAR FM 101.2</div></div>
   <div id="hint" class="hidden"></div>
   <div id="notify"></div>
@@ -78,7 +110,10 @@
   <h1>SOLMAR HEAT</h1>
   <h2>AN OPEN-WORLD CRIME STORY &middot; SOLMAR BAY</h2>
   <p>Kai Marlow owes the wrong people money in a sun-soaked coastal city. Steal cars, outrun the
-  Solmar Bay Police, and take on six story missions to buy back his freedom.</p>
+  Solmar Bay Police, and take on ten story missions to buy back his freedom.</p>
+  <div class="features">
+    <span>10 story missions</span><span>Weapon wheel</span><span>Garage upgrades</span><span>Street races</span><span>Shops</span><span>Respect ranks</span><span>Roadblocks &amp; spike strips</span><span>5-star police</span><span>7 districts</span><span>Saves</span><span>Radio</span>
+  </div>
   <div>
     <button class="btn" id="btnContinue">CONTINUE</button>
     <button class="btn" id="btnNew">NEW GAME</button>
@@ -104,11 +139,17 @@
   <div class="keys">
     <b>W A S D / Arrows</b> Move on foot &middot; drive (W gas, S brake/reverse)<br>
     <b>Mouse</b> Look around &middot; click the game to capture the mouse<br>
-    <b>Left click</b> Punch up close &middot; shoot your pistol at range<br>
+    <b>Left click</b> Punch up close &middot; shoot your weapon at range<br>
+    <b>1 / 2 / 3 &middot; Q</b> Pistol / SMG / Shotgun &middot; Q cycles weapons<br>
     <b>F</b> Steal / enter a car &middot; exit a car<br>
     <b>Shift</b> Sprint on foot &middot; handbrake while driving<br>
     <b>Space</b> Handbrake &middot; jump on foot<br>
-    <b>E</b> Pay 'n Spray: repair car &amp; lose the cops ($100)<br>
+    <b>E</b> Pay 'n Spray garage: repair, engine, armor &amp; paint<br>
+    <b>E</b> Shops: buy ammo &amp; food at Solmar Arms, Sunset Tacos, Bay General<br>
+    <b>E</b> Street races: drive to the checkered flag, beat 2 rivals, win $400<br>
+    <b>Respect</b> Missions earn respect &middot; Street &rarr; Runner &rarr; Wheelman &rarr; King of Solmar<br>
+    <b>Roadblocks</b> At 3 stars the police block the road &middot; at 4 stars, spike strips<br>
+    <b>Districts</b> Seven named districts — your location shows on the HUD<br>
     <b>R</b> Change radio station &middot; <b>M</b> Mute<br>
     <b>P / Esc</b> Pause &middot; <b>H</b> This help screen<br>
     <b>Yellow marker</b> Next story mission &middot; follow the objective panel
