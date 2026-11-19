@@ -46,20 +46,21 @@ export function makeCarMesh(color, kind, role) {
     g.add(bar);
   }
   if (kind === 'taxi') g.add(box(0.9, 0.22, 0.4, new THREE.MeshBasicMaterial({ color: 0xffd23f }), 0, 1.52, -0.2));
-  return { group: g, wheels, bar };
+  return { group: g, wheels, bar, bodyMat };
 }
 
 export function spawnCar(G, opts) {
   const kind = opts.kind || G.rng.pick(['sedan', 'sedan', 'sedan', 'sports', 'van', 'taxi']);
   const color = opts.color ?? (opts.role === 'police' ? 0xf2f4f6 : G.rng.pick(CAR_COLORS));
-  const { group, wheels, bar } = makeCarMesh(color, kind, opts.role);
+  const { group, wheels, bar, bodyMat } = makeCarMesh(color, kind, opts.role);
   group.position.set(opts.x, 0, opts.z);
   group.rotation.y = opts.heading || 0;
   G.scene.add(group);
   const car = {
-    mesh: group, wheels, bar, kind, role: opts.role || 'traffic',
+    mesh: group, wheels, bar, bodyMat, kind, role: opts.role || 'traffic',
     x: opts.x, z: opts.z, heading: opts.heading || 0, speed: 0, steer: 0,
-    health: 100, cruise: G.rng.range(9, 13), wpX: opts.x, wpZ: opts.z,
+    health: 100, maxHealth: 100, topSpeedMul: 1,
+    cruise: G.rng.range(9, 13), wpX: opts.x, wpZ: opts.z,
     stuck: 0, dead: false, color, sirenPhase: G.rng.range(0, 6), crashCd: 0, ramCd: 0,
   };
   G.cars.push(car);
@@ -195,7 +196,8 @@ function spinWheels(car, dt) {
 export function drivePlayerCar(G, car, input, dt) {
   const axes = input.axes();
   car.crashCd = Math.max(0, car.crashCd - dt);
-  const top = car.kind === 'sports' ? CAR_TOP_SPEED * 1.15 : CAR_TOP_SPEED;
+  // Engine tunes from the garage raise the top speed (x1.12 per level).
+  const top = (car.kind === 'sports' ? CAR_TOP_SPEED * 1.15 : CAR_TOP_SPEED) * (car.topSpeedMul || 1);
   if (axes.y > 0) car.speed += CAR_ACCEL * dt * (car.speed < 0 ? 2.2 : 1);
   else if (axes.y < 0) {
     if (car.speed > 0.5) car.speed -= CAR_BRAKE * dt;
